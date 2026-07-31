@@ -1,0 +1,931 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>SURFACE — Bスプライン曲面で遊ぶ</title>
+<style>
+
+:root{
+  --gray100:#F0F0F0; --gray200:#E4E4E3; --gray300:#D1D0CD; --gray400:#B1B0AE;
+  --gray500:#8C8B87; --gray600:#6F6F6F; --gray700:#575757; --gray800:#424242;
+  --gray900:#31312F; --gray1000:#232322;
+
+  --bg:#232322;
+  --surface:#2A2A29;
+  --surface-2:var(--gray900);
+  --line:var(--gray800);
+  --line-soft:#3A3A38;
+  --text:var(--gray100);
+  --text-mute:var(--gray500);
+  --text-dim:var(--gray600);
+
+  --accent:#4ACBD4;
+  --accent-dim:#8DDDE3;
+  --accent-deep:#00A0AC;
+
+  --font-ui:"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP",system-ui,-apple-system,sans-serif;
+  --font-mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,"Roboto Mono",monospace;
+
+  --sp1:4px; --sp2:8px; --sp3:12px; --sp4:16px; --sp5:24px; --sp6:32px;
+  --r-s:6px; --r-m:10px; --r-l:14px;
+  --panel-w:312px;
+  --track-h:150px;
+}
+[data-theme="asagi"]   {--accent:#4ACBD4;--accent-dim:#8DDDE3;--accent-deep:#00A0AC;}
+[data-theme="kurikawa"]{--accent:#F49972;--accent-dim:#FCC4AB;--accent-deep:#DC6733;}
+[data-theme="sumire"]  {--accent:#CC9FD9;--accent-dim:#E1C7E7;--accent-deep:#B36CCD;}
+[data-theme="tsutsuji"]{--accent:#F691B6;--accent-dim:#F3C4D3;--accent-deep:#E2568F;}
+[data-theme="konjo"]   {--accent:#8FAEFE;--accent-dim:#C0CFFD;--accent-deep:#3B86F9;}
+
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+html,body{height:100%;margin:0;overscroll-behavior:none;}
+body{
+  background:var(--bg);color:var(--text);font-family:var(--font-ui);
+  font-size:14px;line-height:1.5;
+  display:flex;flex-direction:column;
+  padding-top:env(safe-area-inset-top);
+  padding-bottom:env(safe-area-inset-bottom);
+}
+button{font-family:inherit;font-size:inherit;color:inherit;background:none;border:none;padding:0;cursor:pointer;}
+button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+
+/* ---------- header ---------- */
+header{
+  display:flex;align-items:baseline;gap:var(--sp3);
+  padding:10px var(--sp4);border-bottom:1px solid var(--line);
+  flex:0 0 auto;
+}
+.wordmark{font-family:var(--font-mono);font-size:15px;letter-spacing:.22em;font-weight:600;}
+.tagline{font-size:11px;color:var(--text-mute);letter-spacing:.04em;}
+.themes{margin-left:auto;display:flex;gap:6px;}
+.themes button{width:16px;height:16px;border-radius:50%;border:1.5px solid transparent;transition:transform .15s;}
+.themes button[aria-pressed="true"]{border-color:var(--gray300);transform:scale(1.15);}
+
+/* ---------- layout ---------- */
+.app{flex:1 1 auto;display:flex;min-height:0;}
+.stage{flex:1 1 auto;display:flex;flex-direction:column;min-width:0;min-height:0;}
+#curveWrap{flex:1 1 auto;position:relative;min-height:0;}
+#curve{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;}
+
+.paramzone{
+  flex:0 0 auto;border-top:1px solid var(--line);background:var(--surface);
+  position:relative;
+}
+.paramhead{
+  display:flex;align-items:center;gap:var(--sp3);
+  padding:6px var(--sp4) 2px;
+}
+.eyebrow{font-family:var(--font-mono);font-size:10px;letter-spacing:.16em;color:var(--text-dim);text-transform:uppercase;}
+.paramhead .jp{font-size:11px;color:var(--text-mute);}
+.paramhead .spacer{flex:1;}
+.mini{font-family:var(--font-mono);font-size:11px;color:var(--text-mute);padding:3px 8px;border:1px solid var(--line);border-radius:var(--r-s);}
+.mini:hover{border-color:var(--gray600);color:var(--text);}
+#param{display:block;width:100%;height:var(--track-h);touch-action:none;}
+.paramzone.collapsed #param{height:44px;}
+
+/* ---------- panel ---------- */
+.panel{
+  flex:0 0 var(--panel-w);width:var(--panel-w);border-left:1px solid var(--line);
+  background:var(--surface);overflow-y:auto;padding-bottom:var(--sp6);
+}
+.tabs{display:none;}
+.sec{border-bottom:1px solid var(--line-soft);padding:var(--sp4);}
+.sec h2{
+  font-family:var(--font-mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--text-dim);margin:0 0 var(--sp3);font-weight:600;
+  display:flex;gap:8px;align-items:baseline;
+}
+.sec h2 em{font-style:normal;font-family:var(--font-ui);font-size:11px;letter-spacing:.02em;color:var(--text-mute);}
+
+.row{display:flex;align-items:center;gap:var(--sp2);margin-bottom:var(--sp3);}
+.row:last-child{margin-bottom:0;}
+.row label{font-size:12px;color:var(--text-mute);flex:0 0 62px;}
+.val{font-family:var(--font-mono);font-size:12px;color:var(--text);margin-left:auto;font-variant-numeric:tabular-nums;}
+
+input[type=range]{
+  -webkit-appearance:none;appearance:none;flex:1;height:22px;background:none;
+}
+input[type=range]::-webkit-slider-runnable-track{height:2px;background:var(--gray700);border-radius:1px;}
+input[type=range]::-moz-range-track{height:2px;background:var(--gray700);border-radius:1px;}
+input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none;width:16px;height:16px;border-radius:50%;
+  background:var(--accent);margin-top:-7px;border:none;
+}
+input[type=range]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;background:var(--accent);border:none;}
+
+.seg{display:flex;border:1px solid var(--line);border-radius:var(--r-s);overflow:hidden;width:100%;}
+.seg button{flex:1;padding:7px 4px;font-size:12px;color:var(--text-mute);border-right:1px solid var(--line);}
+.seg button:last-child{border-right:none;}
+.seg button[aria-pressed="true"]{background:var(--accent);color:#1A1A19;font-weight:600;}
+
+.toggles{display:flex;flex-wrap:wrap;gap:6px;}
+.chip{
+  padding:6px 10px;border:1px solid var(--line);border-radius:999px;font-size:12px;color:var(--text-mute);
+}
+.chip[aria-pressed="true"]{border-color:var(--accent);color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,transparent);}
+
+.btns{display:flex;gap:6px;flex-wrap:wrap;}
+.btn{
+  flex:1 1 auto;padding:9px 10px;border:1px solid var(--line);border-radius:var(--r-s);
+  font-size:12px;text-align:center;color:var(--text);white-space:nowrap;
+}
+.btn:hover{border-color:var(--gray600);background:var(--surface-2);}
+.btn.primary{background:var(--accent);color:#1A1A19;border-color:var(--accent);font-weight:600;}
+.btn.primary:hover{background:var(--accent-dim);}
+
+.readout{
+  font-family:var(--font-mono);font-size:11px;color:var(--text-mute);
+  display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;font-variant-numeric:tabular-nums;
+}
+.readout b{color:var(--text);font-weight:500;}
+.hint{font-size:11px;color:var(--text-dim);line-height:1.6;margin:var(--sp3) 0 0;}
+.knotlist{display:flex;flex-direction:column;gap:6px;}
+.krow{display:flex;align-items:center;gap:var(--sp2);}
+.krow .u{font-family:var(--font-mono);font-size:12px;color:var(--text-mute);font-variant-numeric:tabular-nums;flex:0 0 62px;}
+.krow .c{font-family:var(--font-mono);font-size:11px;padding:2px 7px;border-radius:999px;border:1px solid var(--line);color:var(--text-mute);}
+.krow .c.c0{color:var(--gray200);border-color:var(--gray600);}
+.krow .c.cut{color:#FF8F8F;border-color:#81001F;}
+.krow .stp{margin-left:auto;display:flex;align-items:center;gap:2px;}
+.krow .stp button{width:28px;height:26px;border:1px solid var(--line);border-radius:var(--r-s);font-size:13px;color:var(--text-mute);}
+.krow .stp button:hover{border-color:var(--gray600);color:var(--text);}
+.krow .stp span{font-family:var(--font-mono);font-size:12px;width:26px;text-align:center;color:var(--text);}
+.note{font-size:11px;color:var(--text-dim);}
+.fieldlabel{font-size:12px;color:var(--text-mute);margin:0 0 var(--sp2);}
+.nudge{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;width:132px;margin-top:var(--sp2);}
+.nudge button{padding:8px 0;border:1px solid var(--line);border-radius:var(--r-s);font-size:13px;color:var(--text-mute);}
+.nudge .sp{visibility:hidden;}
+
+.toast{
+  position:fixed;left:50%;transform:translateX(-50%);bottom:24px;
+  background:var(--gray100);color:var(--gray1000);font-size:12px;font-weight:600;
+  padding:8px 16px;border-radius:999px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:50;
+}
+.toast.on{opacity:1;}
+
+/* ---------- mobile ---------- */
+@media (max-width:900px){
+  :root{--track-h:126px;}
+  header{padding:8px var(--sp3);}
+  .tagline{display:none;}
+  .app{flex-direction:column;}
+  .stage{flex:1 1 auto;}
+  .panel{
+    flex:0 0 auto;width:100%;border-left:none;border-top:1px solid var(--line);
+    max-height:38vh;padding-bottom:var(--sp3);
+  }
+  #curveWrap{min-height:26vh;}
+  .tabs{display:flex;position:sticky;top:0;background:var(--surface);z-index:5;border-bottom:1px solid var(--line);}
+  .tabs button{
+    flex:1;padding:11px 0;font-size:12px;color:var(--text-mute);border-bottom:2px solid transparent;
+  }
+  .tabs button[aria-pressed="true"]{color:var(--accent);border-bottom-color:var(--accent);}
+  .sec{display:none;border-bottom:none;}
+  .sec.active{display:block;}
+  .btn{padding:12px 10px;}
+  .chip{padding:8px 12px;}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;}}
+
+.threecol{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;}
+.twocol{display:grid;grid-template-columns:1fr 1fr;gap:6px;}
+.swatchrow{display:flex;gap:6px;flex-wrap:wrap;margin-top:var(--sp2);}
+.stagepad{position:relative;flex:1 1 auto;min-height:0;}
+.stagepad canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;}
+.transport{
+  display:flex;align-items:center;gap:var(--sp3);padding:8px var(--sp4);
+  border-top:1px solid var(--line);background:var(--surface);flex:0 0 auto;
+}
+.playbtn{width:38px;height:38px;border-radius:50%;background:var(--accent);color:#1A1A19;
+  display:flex;align-items:center;justify-content:center;font-size:14px;flex:0 0 auto;}
+#timeline{flex:1;height:34px;display:block;touch-action:none;}
+.tnum{font-family:var(--font-mono);font-size:11px;color:var(--text-mute);font-variant-numeric:tabular-nums;flex:0 0 auto;}
+@media (max-width:900px){ .stagepad{min-height:26vh;} }
+.warn{color:#FFC0BB;}
+.ok{color:#90E4C7;}
+</style>
+</head>
+<body data-theme="asagi">
+
+<header>
+  <span class="wordmark">SURFACE</span>
+  <span class="tagline">テンソル積のBスプライン曲面</span>
+  <div class="themes" id="themes">
+    <button data-t="asagi"    style="background:#4ACBD4" title="浅葱"   aria-pressed="true"></button>
+    <button data-t="kurikawa" style="background:#F49972" title="栗皮"   aria-pressed="false"></button>
+    <button data-t="sumire"   style="background:#CC9FD9" title="菫"     aria-pressed="false"></button>
+    <button data-t="tsutsuji" style="background:#F691B6" title="躑躅"   aria-pressed="false"></button>
+    <button data-t="konjo"    style="background:#8FAEFE" title="紺"     aria-pressed="false"></button>
+  </div>
+</header>
+
+<div class="app">
+  <div class="stage">
+    <div class="stagepad"><canvas id="view"></canvas></div>
+
+  </div>
+  <div class="panel">
+    <div class="tabs" id="tabs"></div>
+    <section class="sec" data-s="form" data-label="形">
+      <h2>form <em>格子と次数</em></h2>
+      <div class="row">
+        <label for="nu">格子 u</label>
+        <input type="range" id="nu" min="3" max="8" step="1" value="5">
+        <span class="val" id="nuVal">5</span>
+      </div>
+      <div class="row">
+        <label for="nv">格子 v</label>
+        <input type="range" id="nv" min="3" max="8" step="1" value="5">
+        <span class="val" id="nvVal">5</span>
+      </div>
+      <div class="row">
+        <label for="deg">次数 p</label>
+        <input type="range" id="deg" min="1" max="4" step="1" value="3">
+        <span class="val" id="degVal">3</span>
+      </div>
+      <div class="row">
+        <label for="amp">高さ</label>
+        <input type="range" id="amp" min="0" max="2" step="0.02" value="1" data-fmt="f2">
+        <span class="val" id="ampVal">1.00</span>
+      </div>
+      <p class="fieldlabel" style="margin-top:var(--sp3)">下敷きのかたち</p>
+      <div class="threecol">
+        <button class="btn" data-preset="wave">波</button>
+        <button class="btn" data-preset="hill">丘</button>
+        <button class="btn" data-preset="saddle">鞍</button>
+        <button class="btn" data-preset="ridge">尾根</button>
+        <button class="btn" data-preset="flat">平ら</button>
+        <button class="btn primary" data-preset="rand">偶然</button>
+      </div>
+      <p class="hint">格子点をドラッグすると上下します。それ以外をドラッグで回転、ピンチまたはホイールで拡大。</p>
+    </section>
+
+    <section class="sec" data-s="view" data-label="視点">
+      <h2>view <em>視点と表示</em></h2>
+      <div class="row">
+        <label for="yaw">回転</label>
+        <input type="range" id="yaw" min="-180" max="180" step="1" value="-28">
+        <span class="val" id="yawVal">-28</span>
+      </div>
+      <div class="row">
+        <label for="pitch">俯角</label>
+        <input type="range" id="pitch" min="2" max="88" step="1" value="34">
+        <span class="val" id="pitchVal">34</span>
+      </div>
+      <div class="row">
+        <label for="iso">等値線</label>
+        <input type="range" id="iso" min="2" max="24" step="1" value="10">
+        <span class="val" id="isoVal">10</span>
+      </div>
+      <div class="toggles" id="toggles" style="margin-top:var(--sp3)">
+        <button class="chip" data-v="fill"   aria-pressed="true">面</button>
+        <button class="chip" data-v="wire"   aria-pressed="true">等値線</button>
+        <button class="chip" data-v="cage"   aria-pressed="true">制御格子</button>
+        <button class="chip" data-v="stems"  aria-pressed="true">支柱</button>
+        <button class="chip" data-v="ground" aria-pressed="true">地面</button>
+      </div>
+      <div class="twocol" style="margin-top:var(--sp3)">
+        <button class="btn" data-vp="iso">等角</button>
+        <button class="btn" data-vp="top">真上</button>
+        <button class="btn" data-vp="front">正面</button>
+        <button class="btn" id="fitBtn">全体を表示</button>
+      </div>
+    </section>
+
+    <section class="sec" data-s="out" data-label="出力">
+      <h2>output <em>書き出し</em></h2>
+      <div class="readout" id="readout"></div>
+      <div class="twocol" style="margin-top:var(--sp4)">
+        <button class="btn primary" id="svgBtn">SVG</button>
+        <button class="btn" id="pngBtn">PNG</button>
+      </div>
+      <p class="hint">正射影はアフィン変換なので、投影した等値線もそのままBスプラインです。次数3以下なら誤差ゼロの3次ベジェとして書き出します。</p>
+    </section>
+
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+"use strict";
+/* =========================================================
+   B-spline core  (numerically verified: partition of unity,
+   de Boor == Σ N_i P_i, analytic derivative, Bézier fidelity)
+   ========================================================= */
+function buildCurve(P, degree, mode, interior){
+  let pts, U, p;
+  if(mode === 'closed'){
+    const n = P.length;
+    p = Math.max(1, Math.min(degree, n - 1));
+    pts = P.concat(P.slice(0, p));
+    const m = pts.length + p + 1;
+    U = []; for(let i=0;i<m;i++) U.push(i/(m-1));
+  } else if(mode === 'uniform'){
+    pts = P.slice();
+    p = Math.max(1, Math.min(degree, pts.length - 1));
+    const m = pts.length + p + 1;
+    U = []; for(let i=0;i<m;i++) U.push(i/(m-1));
+  } else {
+    pts = P.slice();
+    const N = pts.length;
+    p = Math.max(1, Math.min(degree, N - 1));
+    const nInt = N - p - 1;
+    let inner;
+    if(interior && interior.length === nInt) inner = interior.slice().sort((a,b)=>a-b);
+    else { inner = []; for(let i=1;i<=nInt;i++) inner.push(i/(nInt+1)); }
+    U = [];
+    for(let i=0;i<=p;i++) U.push(0);
+    for(const v of inner) U.push(v);
+    for(let i=0;i<=p;i++) U.push(1);
+  }
+  const N = pts.length;
+  return {pts, U, p, N, u0:U[p], u1:U[N]};
+}
+function findSpan(c,u){
+  const {U,N,p}=c;
+  if(u >= U[N]){ let k=N-1; while(k>p && U[k]===U[k+1]) k--; return k; }
+  if(u <= U[p]){ let k=p; while(k<N-1 && U[k]===U[k+1]) k++; return k; }
+  let lo=p, hi=N, mid=(lo+hi)>>1, guard=0;
+  while((u<U[mid] || u>=U[mid+1]) && guard++<200){
+    if(u<U[mid]) hi=mid; else lo=mid;
+    const nx=(lo+hi)>>1;
+    if(nx===mid){ mid=lo; break; }
+    mid=nx;
+  }
+  return mid;
+}
+function basisFuns(c,span,u){
+  const {U,p}=c;
+  const Nv=new Array(p+1).fill(0), left=new Array(p+1).fill(0), right=new Array(p+1).fill(0);
+  Nv[0]=1;
+  for(let j=1;j<=p;j++){
+    left[j]=u-U[span+1-j]; right[j]=U[span+j]-u;
+    let saved=0;
+    for(let r=0;r<j;r++){
+      const den=right[r+1]+left[j-r];
+      const tmp = den===0 ? 0 : Nv[r]/den;
+      Nv[r]=saved+right[r+1]*tmp;
+      saved=left[j-r]*tmp;
+    }
+    Nv[j]=saved;
+  }
+  return Nv;
+}
+function basisVector(c,u){
+  const out=new Array(c.N).fill(0);
+  const span=findSpan(c,u), Nv=basisFuns(c,span,u);
+  for(let j=0;j<=c.p;j++){ const i=span-c.p+j; if(i>=0&&i<c.N) out[i]=Nv[j]; }
+  return out;
+}
+function evalCurve(c,u,forced){
+  const span = forced===undefined ? findSpan(c,u) : forced;
+  const Nv=basisFuns(c,span,u);
+  let x=0,y=0;
+  for(let j=0;j<=c.p;j++){ const P=c.pts[span-c.p+j]; x+=Nv[j]*P.x; y+=Nv[j]*P.y; }
+  return {x,y};
+}
+function derivCurve(c){
+  if(c.p<1) return null;
+  const {U,p,pts}=c, Q=[];
+  for(let i=0;i<pts.length-1;i++){
+    const den=U[i+p+1]-U[i+1], f = den===0?0:p/den;
+    Q.push({x:(pts[i+1].x-pts[i].x)*f, y:(pts[i+1].y-pts[i].y)*f});
+  }
+  const U2=U.slice(1,U.length-1), N2=Q.length;
+  return {pts:Q,U:U2,p:p-1,N:N2,u0:U2[p-1],u1:U2[N2]};
+}
+function curvatureAt(d1,d2,u){
+  if(!d1) return 0;
+  const a=evalCurve(d1,u), b=d2?evalCurve(d2,u):{x:0,y:0};
+  const sp=Math.hypot(a.x,a.y);
+  if(sp<1e-12) return 0;
+  return (a.x*b.y-a.y*b.x)/(sp*sp*sp);
+}
+function deBoorLevels(c,u){
+  const span=findSpan(c,u), p=c.p, U=c.U;
+  const d=[];
+  for(let j=0;j<=p;j++){ const P=c.pts[span-p+j]; d.push({x:P.x,y:P.y}); }
+  const levels=[d.slice()];
+  for(let r=1;r<=p;r++){
+    for(let j=p;j>=r;j--){
+      const den=U[j+1+span-r]-U[j+span-p];
+      const a = den===0 ? 0 : (u-U[j+span-p])/den;
+      d[j]={x:(1-a)*d[j-1].x+a*d[j].x, y:(1-a)*d[j-1].y+a*d[j].y};
+    }
+    levels.push(d.slice(r));
+  }
+  return levels;
+}
+function spanBreaks(c){
+  const b=[];
+  for(let i=c.p;i<=c.N;i++){
+    const v=c.U[i];
+    if(b.length===0 || v>b[b.length-1]+1e-9) b.push(v);
+  }
+  return b;
+}
+function toBeziers(c,d1){
+  const sub = c.p<=3 ? 1 : 8;
+  const brk = spanBreaks(c), segs=[];
+  for(let s=0;s<brk.length-1;s++){
+    const a0=brk[s], b0=brk[s+1];
+    for(let k=0;k<sub;k++){
+      const a=a0+(b0-a0)*(k/sub), b=a0+(b0-a0)*((k+1)/sub), h=b-a, mid=(a+b)/2;
+      const sc=findSpan(c,mid), sd=findSpan(d1,mid);
+      const P0=evalCurve(c,a,sc), P1=evalCurve(c,b,sc);
+      const T0=evalCurve(d1,a,sd), T1=evalCurve(d1,b,sd);
+      segs.push({p0:P0, c1:{x:P0.x+T0.x*h/3, y:P0.y+T0.y*h/3},
+                        c2:{x:P1.x-T1.x*h/3, y:P1.y-T1.y*h/3}, p1:P1});
+    }
+  }
+  return segs;
+}
+
+
+/* ---------- shared helpers (every tool in the family) ---------- */
+function css(v){ return getComputedStyle(document.body).getPropertyValue(v).trim(); }
+const DV = ['#4ACBD4','#F49972','#CC9FD9','#F691B6','#8FAEFE','#46D2A2','#DEC400','#FF8F8F','#DEB074'];
+const COARSE = matchMedia('(pointer:coarse)').matches;
+
+function toast(msg){
+  const el=document.getElementById('toast');
+  el.textContent=msg; el.classList.add('on');
+  clearTimeout(el._t); el._t=setTimeout(()=>el.classList.remove('on'),1500);
+}
+function stamp(){
+  const d=new Date(), z=n=>String(n).padStart(2,'0');
+  return `${d.getFullYear()}${z(d.getMonth()+1)}${z(d.getDate())}-${z(d.getHours())}${z(d.getMinutes())}`;
+}
+function download(blob,name){
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob); a.download=name;
+  document.body.appendChild(a); a.click();
+  setTimeout(()=>{URL.revokeObjectURL(a.href); a.remove();},100);
+}
+function saveSVG(inner,name,w,h){
+  const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">\n${inner}\n</svg>`;
+  download(new Blob([svg],{type:'image/svg+xml'}), name);
+  toast('SVGを書き出しました');
+}
+function bezPath(segs, close){
+  if(!segs.length) return '';
+  let d=`M ${segs[0].p0.x.toFixed(2)} ${segs[0].p0.y.toFixed(2)}`;
+  segs.forEach(s=>{ d+=` C ${s.c1.x.toFixed(2)} ${s.c1.y.toFixed(2)} ${s.c2.x.toFixed(2)} ${s.c2.y.toFixed(2)} ${s.p1.x.toFixed(2)} ${s.p1.y.toFixed(2)}`; });
+  return d + (close?' Z':'');
+}
+function strokeBez(ctx, segs, toS){
+  if(!segs.length) return;
+  let prev=null;
+  ctx.beginPath();
+  segs.forEach((sg,i)=>{
+    const a=toS(sg.p0), b=toS(sg.c1), c=toS(sg.c2), d=toS(sg.p1);
+    if(i===0 || !prev || Math.hypot(a.x-prev.x,a.y-prev.y)>0.5) ctx.moveTo(a.x,a.y);
+    ctx.bezierCurveTo(b.x,b.y,c.x,c.y,d.x,d.y);
+    prev=d;
+  });
+  ctx.stroke();
+}
+/* auto-build the mobile tab bar from the panel sections */
+function initChrome(onTheme){
+  const tabs=document.getElementById('tabs');
+  document.querySelectorAll('.panel .sec').forEach((s,i)=>{
+    const b=document.createElement('button');
+    b.dataset.s=s.dataset.s; b.textContent=s.dataset.label;
+    b.setAttribute('aria-pressed', String(i===0));
+    tabs.appendChild(b);
+    if(i===0) s.classList.add('active');
+  });
+  tabs.addEventListener('click', e=>{
+    const b=e.target.closest('button'); if(!b) return;
+    tabs.querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));
+    document.querySelectorAll('.panel .sec').forEach(s=>s.classList.toggle('active', s.dataset.s===b.dataset.s));
+  });
+  const th=document.getElementById('themes');
+  th.addEventListener('click', e=>{
+    const b=e.target.closest('button'); if(!b) return;
+    document.body.dataset.theme=b.dataset.t;
+    th.querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));
+    if(onTheme) onTheme();
+  });
+}
+/* dpr-aware canvas sizing */
+function sizeCanvas(cv,ctx){
+  const dpr=Math.min(window.devicePixelRatio||1,2.5);
+  const r=cv.getBoundingClientRect();
+  const w=Math.max(1,Math.round(r.width)), h=Math.max(1,Math.round(r.height));
+  cv.width=w*dpr; cv.height=h*dpr;
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  return {w,h};
+}
+function seg(el, onPick){
+  el.addEventListener('click', e=>{
+    const b=e.target.closest('button'); if(!b) return;
+    el.querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));
+    onPick(b.dataset.v);
+  });
+}
+function chips(el, state, onChange){
+  el.addEventListener('click', e=>{
+    const b=e.target.closest('.chip'); if(!b) return;
+    state[b.dataset.v]=!state[b.dataset.v];
+    b.setAttribute('aria-pressed', String(state[b.dataset.v]));
+    onChange();
+  });
+}
+function bindRange(id, onInput){
+  const el=document.getElementById(id), out=document.getElementById(id+'Val');
+  const fire=()=>{ if(out) out.textContent=el.dataset.fmt==='f2'? (+el.value).toFixed(2) : el.value; onInput(+el.value); };
+  el.addEventListener('input', fire);
+  if(out) out.textContent = el.dataset.fmt==='f2' ? (+el.value).toFixed(2) : el.value;
+  return el;
+}
+
+/* =========================================================
+   SURFACE — tensor product B-spline over a height field
+   ========================================================= */
+const SPAN = 520;                       // world extent of the control grid
+const S = {
+  nu:5, nv:5, deg:3, amp:1, iso:10,
+  h:[],                                  // h[i][j] in -1..1
+  yaw:-28, pitch:34, zoom:1, ox:0, oy:0,
+  show:{fill:true, wire:true, cage:true, stems:true, ground:true},
+  sel:null
+};
+
+function gridX(i){ return -SPAN/2 + SPAN*i/(S.nu-1); }
+function gridY(j){ return -SPAN/2 + SPAN*j/(S.nv-1); }
+function ctrl(i,j){ return {x:gridX(i), y:gridY(j), z:S.h[i][j]*220*S.amp}; }
+
+function preset(kind){
+  S.h=[];
+  for(let i=0;i<S.nu;i++){
+    S.h.push([]);
+    for(let j=0;j<S.nv;j++){
+      const a=i/(S.nu-1)*2-1, b=j/(S.nv-1)*2-1;
+      let v=0;
+      switch(kind){
+        case 'wave':   v=Math.sin(a*Math.PI)*0.8; break;
+        case 'hill':   v=Math.cos(Math.hypot(a,b)*1.6)*0.9; break;
+        case 'saddle': v=a*b; break;
+        case 'ridge':  v=Math.cos(a*2.4)*0.6 + Math.sin(b*1.2)*0.35; break;
+        case 'flat':   v=0; break;
+        default:       v=Math.random()*2-1;
+      }
+      S.h[i].push(Math.max(-1,Math.min(1,v)));
+    }
+  }
+}
+
+/* ---- axis knot vectors (clamped uniform) ---- */
+function axis(n,deg){
+  const p=Math.max(1,Math.min(deg,n-1));
+  const nInt=n-p-1, U=[];
+  for(let i=0;i<=p;i++) U.push(0);
+  for(let i=1;i<=nInt;i++) U.push(i/(nInt+1));
+  for(let i=0;i<=p;i++) U.push(1);
+  return {N:n, p, U, u0:0, u1:1};
+}
+let AU=null, AV=null;
+function rebuildAxes(){ AU=axis(S.nu,S.deg); AV=axis(S.nv,S.deg); }
+
+/* control points of the iso-curve at fixed v (3D) */
+function isoAtV(v){
+  const bv=basisVector(AV,v), Q=[];
+  for(let i=0;i<S.nu;i++){
+    let x=0,y=0,z=0;
+    for(let j=0;j<S.nv;j++){
+      const w=bv[j]; if(!w) continue;
+      const P=ctrl(i,j); x+=w*P.x; y+=w*P.y; z+=w*P.z;
+    }
+    Q.push({x,y,z});
+  }
+  return Q;
+}
+function isoAtU(u){
+  const bu=basisVector(AU,u), Q=[];
+  for(let j=0;j<S.nv;j++){
+    let x=0,y=0,z=0;
+    for(let i=0;i<S.nu;i++){
+      const w=bu[i]; if(!w) continue;
+      const P=ctrl(i,j); x+=w*P.x; y+=w*P.y; z+=w*P.z;
+    }
+    Q.push({x,y,z});
+  }
+  return Q;
+}
+/* the shared evaluator only carries x/y, so surfaces need a 3D variant */
+function evalPt3(c,u){
+  const span=findSpan(c,u), Nv=basisFuns(c,span,u);
+  let x=0,y=0,z=0;
+  for(let j=0;j<=c.p;j++){
+    const P=c.pts[span-c.p+j];
+    x+=Nv[j]*P.x; y+=Nv[j]*P.y; z+=Nv[j]*(P.z||0);
+  }
+  return {x,y,z};
+}
+function surfPoint(u,v){
+  const Q=isoAtV(v);
+  return evalPt3({pts:Q, U:AU.U, p:AU.p, N:AU.N, u0:0, u1:1}, u);
+}
+
+/* ---- orthographic projection (affine) ---- */
+let PR = {ca:1, sa:0, cb:1, sb:0, k:1};
+function updateProj(){
+  const a=S.yaw*Math.PI/180, b=S.pitch*Math.PI/180;
+  PR={ca:Math.cos(a), sa:Math.sin(a), cb:Math.cos(b), sb:Math.sin(b)};
+}
+function prj(P){
+  const rx = P.x*PR.ca - P.y*PR.sa;
+  const ry = P.x*PR.sa + P.y*PR.ca;
+  return {x: rx, y: ry*PR.sb - P.z*PR.cb, d: ry*PR.cb + P.z*PR.sb};
+}
+let VW=0, VH=0, FIT=1, CX=0, CY=0;
+function toS(q){ return {x:CX + q.x*FIT*S.zoom + S.ox, y:CY + q.y*FIT*S.zoom + S.oy}; }
+function prjS(P){ return toS(prj(P)); }
+
+function fitView(){
+  let minx=1e9,maxx=-1e9,miny=1e9,maxy=-1e9;
+  for(let i=0;i<S.nu;i++) for(let j=0;j<S.nv;j++){
+    const q=prj(ctrl(i,j));
+    minx=Math.min(minx,q.x); maxx=Math.max(maxx,q.x);
+    miny=Math.min(miny,q.y); maxy=Math.max(maxy,q.y);
+  }
+  const w=Math.max(1,maxx-minx), h=Math.max(1,maxy-miny);
+  FIT = Math.min((VW-70)/w, (VH-70)/h);
+  S.zoom=1; S.ox=-(minx+maxx)/2*FIT; S.oy=-(miny+maxy)/2*FIT;
+  CX=VW/2; CY=VH/2;
+}
+
+/* ---- colour ---- */
+function hex2rgb(h){ return [parseInt(h.slice(1,3),16), parseInt(h.slice(3,5),16), parseInt(h.slice(5,7),16)]; }
+function shade(rgb, t){          // t: 0 dark .. 1 light
+  const m = 0.28 + 0.85*t;
+  return `rgb(${Math.min(255,rgb[0]*m|0)},${Math.min(255,rgb[1]*m|0)},${Math.min(255,rgb[2]*m|0)})`;
+}
+
+/* =========================================================
+   render
+   ========================================================= */
+const cv=document.getElementById('view'), ctx=cv.getContext('2d');
+function resize(){
+  const d=sizeCanvas(cv,ctx); VW=d.w; VH=d.h;
+  fitView(); render();
+}
+function render(){
+  updateProj();
+  const acc=hex2rgb(css('--accent'));
+  ctx.clearRect(0,0,VW,VH);
+
+  // ground plane
+  if(S.show.ground){
+    ctx.save();
+    ctx.strokeStyle='rgba(255,255,255,0.07)'; ctx.lineWidth=1;
+    const G=8;
+    ctx.beginPath();
+    for(let i=0;i<=G;i++){
+      const t=-SPAN/2+SPAN*i/G;
+      let q=prjS({x:t,y:-SPAN/2,z:0}); ctx.moveTo(q.x,q.y);
+      q=prjS({x:t,y:SPAN/2,z:0}); ctx.lineTo(q.x,q.y);
+      q=prjS({x:-SPAN/2,y:t,z:0}); ctx.moveTo(q.x,q.y);
+      q=prjS({x:SPAN/2,y:t,z:0}); ctx.lineTo(q.x,q.y);
+    }
+    ctx.stroke(); ctx.restore();
+  }
+
+  // shaded surface (painter's algorithm)
+  if(S.show.fill){
+    const R = COARSE ? 20 : 26;
+    const pts=[], rows=[];
+    for(let a=0;a<=R;a++){
+      const v=a/R, Q=isoAtV(v);
+      const cu={pts:Q, U:AU.U, p:AU.p, N:AU.N, u0:0, u1:1};
+      const row=[];
+      for(let b=0;b<=R;b++) row.push(evalPt3(cu, b/R));
+      rows.push(row);
+    }
+    const quads=[];
+    for(let a=0;a<R;a++) for(let b=0;b<R;b++){
+      const p00=rows[a][b], p10=rows[a][b+1], p11=rows[a+1][b+1], p01=rows[a+1][b];
+      const n=normal(p00,p10,p11);
+      const d=(prj(p00).d+prj(p10).d+prj(p11).d+prj(p01).d)/4;
+      quads.push({pts:[p00,p10,p11,p01], d, n});
+    }
+    quads.sort((x,y)=>x.d-y.d);
+    const L=[0.42,-0.5,0.76];
+    ctx.save();
+    quads.forEach(q=>{
+      let lam = q.n[0]*L[0]+q.n[1]*L[1]+q.n[2]*L[2];
+      lam = Math.max(0, Math.abs(lam));
+      ctx.fillStyle = shade(acc, 0.15+0.85*lam);
+      ctx.beginPath();
+      q.pts.forEach((p,i)=>{ const s=prjS(p); i?ctx.lineTo(s.x,s.y):ctx.moveTo(s.x,s.y); });
+      ctx.closePath(); ctx.fill();
+    });
+    ctx.restore();
+  }
+
+  // exact iso-curves (projected control points -> Bézier)
+  if(S.show.wire){
+    ctx.save();
+    ctx.strokeStyle = S.show.fill ? 'rgba(255,255,255,0.34)' : css('--accent');
+    ctx.lineWidth = 1.2; ctx.lineJoin='round';
+    isoCurves().forEach(c=>{
+      strokeBez(ctx, c.segs, p=>toS(p));
+    });
+    ctx.restore();
+  }
+
+  // control cage
+  if(S.show.cage){
+    ctx.save();
+    ctx.strokeStyle='rgba(255,255,255,0.20)'; ctx.lineWidth=1; ctx.setLineDash([3,3]);
+    ctx.beginPath();
+    for(let i=0;i<S.nu;i++) for(let j=0;j<S.nv;j++){
+      const a=prjS(ctrl(i,j));
+      if(i<S.nu-1){ const b=prjS(ctrl(i+1,j)); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); }
+      if(j<S.nv-1){ const b=prjS(ctrl(i,j+1)); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); }
+    }
+    ctx.stroke(); ctx.restore();
+  }
+  if(S.show.stems){
+    ctx.save();
+    ctx.strokeStyle='rgba(255,255,255,0.14)'; ctx.lineWidth=1;
+    ctx.beginPath();
+    for(let i=0;i<S.nu;i++) for(let j=0;j<S.nv;j++){
+      const P=ctrl(i,j);
+      const a=prjS(P), b=prjS({x:P.x,y:P.y,z:0});
+      ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y);
+    }
+    ctx.stroke(); ctx.restore();
+  }
+  // control points
+  const R = COARSE ? 8 : 6;
+  for(let i=0;i<S.nu;i++) for(let j=0;j<S.nv;j++){
+    const s=prjS(ctrl(i,j));
+    const on = S.sel && S.sel[0]===i && S.sel[1]===j;
+    ctx.save();
+    ctx.fillStyle = on ? DV[(i+j)%DV.length] : css('--bg');
+    ctx.strokeStyle = DV[(i+j)%DV.length]; ctx.lineWidth = on?2.4:1.5;
+    ctx.beginPath(); ctx.arc(s.x,s.y,R,0,6.2832); ctx.fill(); ctx.stroke();
+    ctx.restore();
+  }
+  updateReadout();
+}
+function normal(a,b,c){
+  const ux=b.x-a.x, uy=b.y-a.y, uz=b.z-a.z;
+  const vx=c.x-a.x, vy=c.y-a.y, vz=c.z-a.z;
+  let nx=uy*vz-uz*vy, ny=uz*vx-ux*vz, nz=ux*vy-uy*vx;
+  const L=Math.hypot(nx,ny,nz)||1;
+  return [nx/L,ny/L,nz/L];
+}
+
+/* iso-curves as exact 2D Béziers */
+function isoCurves(){
+  const out=[];
+  const n=S.iso;
+  for(let a=0;a<=n;a++){
+    const v=a/n, Q=isoAtV(v).map(P=>{ const q=prj(P); return {x:q.x,y:q.y}; });
+    const c={pts:Q, U:AU.U, p:AU.p, N:AU.N, u0:0, u1:1};
+    out.push({segs:toBeziers(c, derivCurve(c)), dir:'u'});
+  }
+  for(let a=0;a<=n;a++){
+    const u=a/n, Q=isoAtU(u).map(P=>{ const q=prj(P); return {x:q.x,y:q.y}; });
+    const c={pts:Q, U:AV.U, p:AV.p, N:AV.N, u0:0, u1:1};
+    out.push({segs:toBeziers(c, derivCurve(c)), dir:'v'});
+  }
+  return out;
+}
+
+function updateReadout(){
+  const cs=isoCurves();
+  const anchors=cs.reduce((s,c)=>s+c.segs.length+1,0);
+  document.getElementById('readout').innerHTML =
+    `<span>格子</span><b>${S.nu} × ${S.nv}</b>`+
+    `<span>次数</span><b>${AU.p} / ${AV.p}</b>`+
+    `<span>等値線</span><b>${cs.length} 本</b>`+
+    `<span>アンカー</span><b>${anchors}</b>`+
+    `<span>変換</span><b>${AU.p<=3?'厳密':'8分割近似'}</b>`;
+}
+
+/* =========================================================
+   interaction
+   ========================================================= */
+let drag=null, ptrs=new Map(), pinch=null;
+function hitCtrl(x,y){
+  const R = COARSE ? 24 : 14;
+  let best=null, bd=R;
+  for(let i=0;i<S.nu;i++) for(let j=0;j<S.nv;j++){
+    const s=prjS(ctrl(i,j));
+    const d=Math.hypot(s.x-x, s.y-y);
+    if(d<bd){ bd=d; best=[i,j]; }
+  }
+  return best;
+}
+cv.addEventListener('pointerdown', e=>{
+  cv.setPointerCapture(e.pointerId);
+  ptrs.set(e.pointerId,{x:e.offsetX,y:e.offsetY});
+  if(ptrs.size===2){
+    const [a,b]=[...ptrs.values()];
+    pinch={d:Math.hypot(a.x-b.x,a.y-b.y), z:S.zoom}; drag=null; return;
+  }
+  const hit=hitCtrl(e.offsetX,e.offsetY);
+  if(hit){ S.sel=hit; drag={type:'h', ij:hit, y0:e.offsetY, h0:S.h[hit[0]][hit[1]]}; }
+  else { S.sel=null; drag={type:'orbit', x0:e.offsetX, y0:e.offsetY, yaw:S.yaw, pitch:S.pitch}; }
+  render();
+});
+cv.addEventListener('pointermove', e=>{
+  if(ptrs.has(e.pointerId)) ptrs.set(e.pointerId,{x:e.offsetX,y:e.offsetY});
+  if(pinch && ptrs.size===2){
+    const [a,b]=[...ptrs.values()];
+    const d=Math.hypot(a.x-b.x,a.y-b.y);
+    S.zoom=Math.max(0.25,Math.min(5, pinch.z*d/(pinch.d||1)));
+    render(); return;
+  }
+  if(!drag) return;
+  if(drag.type==='h'){
+    const dz = (drag.y0-e.offsetY)/150;
+    S.h[drag.ij[0]][drag.ij[1]] = Math.max(-1,Math.min(1, drag.h0+dz));
+    render();
+  } else {
+    S.yaw = drag.yaw + (e.offsetX-drag.x0)*0.4;
+    S.pitch = Math.max(2, Math.min(88, drag.pitch + (e.offsetY-drag.y0)*0.3));
+    document.getElementById('yaw').value=Math.round(((S.yaw+180)%360+360)%360-180);
+    document.getElementById('yawVal').textContent=document.getElementById('yaw').value;
+    document.getElementById('pitch').value=Math.round(S.pitch);
+    document.getElementById('pitchVal').textContent=Math.round(S.pitch);
+    render();
+  }
+});
+function endP(e){ ptrs.delete(e.pointerId); if(ptrs.size<2) pinch=null; drag=null; }
+cv.addEventListener('pointerup', endP);
+cv.addEventListener('pointercancel', endP);
+cv.addEventListener('wheel', e=>{
+  e.preventDefault();
+  S.zoom=Math.max(0.25,Math.min(5, S.zoom*Math.exp(-e.deltaY*0.0015)));
+  render();
+},{passive:false});
+
+/* =========================================================
+   controls
+   ========================================================= */
+bindRange('nu', v=>{ S.nu=v; preset(lastPreset); rebuildAxes(); fitView(); render(); });
+bindRange('nv', v=>{ S.nv=v; preset(lastPreset); rebuildAxes(); fitView(); render(); });
+bindRange('deg', v=>{ S.deg=v; rebuildAxes(); render(); });
+bindRange('amp', v=>{ S.amp=v; render(); });
+bindRange('iso', v=>{ S.iso=v; render(); });
+bindRange('yaw', v=>{ S.yaw=v; render(); });
+bindRange('pitch', v=>{ S.pitch=v; render(); });
+chips(document.getElementById('toggles'), S.show, render);
+
+let lastPreset='wave';
+document.querySelectorAll('[data-preset]').forEach(b=>b.addEventListener('click',()=>{
+  lastPreset=b.dataset.preset; preset(lastPreset); rebuildAxes(); fitView(); render();
+}));
+document.querySelectorAll('[data-vp]').forEach(b=>b.addEventListener('click',()=>{
+  const v=b.dataset.vp;
+  if(v==='iso'){ S.yaw=-28; S.pitch=34; }
+  if(v==='top'){ S.yaw=0; S.pitch=88; }
+  if(v==='front'){ S.yaw=0; S.pitch=4; }
+  document.getElementById('yaw').value=S.yaw; document.getElementById('yawVal').textContent=S.yaw;
+  document.getElementById('pitch').value=S.pitch; document.getElementById('pitchVal').textContent=S.pitch;
+  updateProj(); fitView(); render();
+}));
+document.getElementById('fitBtn').addEventListener('click',()=>{ updateProj(); fitView(); render(); });
+
+document.getElementById('svgBtn').addEventListener('click',()=>{
+  const W=1000,H=760;
+  const cs=isoCurves();
+  // map projected coordinates into the page box
+  let minx=1e9,maxx=-1e9,miny=1e9,maxy=-1e9;
+  cs.forEach(c=>c.segs.forEach(s=>[s.p0,s.c1,s.c2,s.p1].forEach(p=>{
+    minx=Math.min(minx,p.x); maxx=Math.max(maxx,p.x);
+    miny=Math.min(miny,p.y); maxy=Math.max(maxy,p.y);
+  })));
+  const k=Math.min((W-80)/(maxx-minx||1),(H-80)/(maxy-miny||1));
+  const mx=(W-(maxx-minx)*k)/2 - minx*k, my=(H-(maxy-miny)*k)/2 - miny*k;
+  const T=p=>({x:p.x*k+mx, y:p.y*k+my});
+  const g=dir=>cs.filter(c=>c.dir===dir).map(c=>
+    `<path d="${bezPath(c.segs.map(s=>({p0:T(s.p0),c1:T(s.c1),c2:T(s.c2),p1:T(s.p1)})))}" fill="none" stroke="#000" stroke-width="0.75"/>`
+  ).join('\n');
+  saveSVG(`<g id="iso-u">\n${g('u')}\n</g>\n<g id="iso-v">\n${g('v')}\n</g>`,
+          `surface_${S.nu}x${S.nv}_p${AU.p}_${stamp()}.svg`, W, H);
+});
+document.getElementById('pngBtn').addEventListener('click',()=>{
+  cv.toBlob(b=>{ download(b, `surface_${S.nu}x${S.nv}_${stamp()}.png`); toast('PNGを書き出しました'); });
+});
+
+/* =========================================================
+   boot
+   ========================================================= */
+initChrome(render);
+preset('wave'); rebuildAxes();
+window.addEventListener('resize', ()=>requestAnimationFrame(resize));
+if(window.ResizeObserver) new ResizeObserver(()=>requestAnimationFrame(resize)).observe(document.querySelector('.stage'));
+resize();
+
+</script>
+</body>
+</html>

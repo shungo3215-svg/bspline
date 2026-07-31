@@ -1,0 +1,905 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>KNOT SEQUENCER — ノット列を時間で動かす</title>
+<style>
+
+:root{
+  --gray100:#F0F0F0; --gray200:#E4E4E3; --gray300:#D1D0CD; --gray400:#B1B0AE;
+  --gray500:#8C8B87; --gray600:#6F6F6F; --gray700:#575757; --gray800:#424242;
+  --gray900:#31312F; --gray1000:#232322;
+
+  --bg:#232322;
+  --surface:#2A2A29;
+  --surface-2:var(--gray900);
+  --line:var(--gray800);
+  --line-soft:#3A3A38;
+  --text:var(--gray100);
+  --text-mute:var(--gray500);
+  --text-dim:var(--gray600);
+
+  --accent:#4ACBD4;
+  --accent-dim:#8DDDE3;
+  --accent-deep:#00A0AC;
+
+  --font-ui:"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP",system-ui,-apple-system,sans-serif;
+  --font-mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,"Roboto Mono",monospace;
+
+  --sp1:4px; --sp2:8px; --sp3:12px; --sp4:16px; --sp5:24px; --sp6:32px;
+  --r-s:6px; --r-m:10px; --r-l:14px;
+  --panel-w:312px;
+  --track-h:150px;
+}
+[data-theme="asagi"]   {--accent:#4ACBD4;--accent-dim:#8DDDE3;--accent-deep:#00A0AC;}
+[data-theme="kurikawa"]{--accent:#F49972;--accent-dim:#FCC4AB;--accent-deep:#DC6733;}
+[data-theme="sumire"]  {--accent:#CC9FD9;--accent-dim:#E1C7E7;--accent-deep:#B36CCD;}
+[data-theme="tsutsuji"]{--accent:#F691B6;--accent-dim:#F3C4D3;--accent-deep:#E2568F;}
+[data-theme="konjo"]   {--accent:#8FAEFE;--accent-dim:#C0CFFD;--accent-deep:#3B86F9;}
+
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+html,body{height:100%;margin:0;overscroll-behavior:none;}
+body{
+  background:var(--bg);color:var(--text);font-family:var(--font-ui);
+  font-size:14px;line-height:1.5;
+  display:flex;flex-direction:column;
+  padding-top:env(safe-area-inset-top);
+  padding-bottom:env(safe-area-inset-bottom);
+}
+button{font-family:inherit;font-size:inherit;color:inherit;background:none;border:none;padding:0;cursor:pointer;}
+button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+
+/* ---------- header ---------- */
+header{
+  display:flex;align-items:baseline;gap:var(--sp3);
+  padding:10px var(--sp4);border-bottom:1px solid var(--line);
+  flex:0 0 auto;
+}
+.wordmark{font-family:var(--font-mono);font-size:15px;letter-spacing:.22em;font-weight:600;}
+.tagline{font-size:11px;color:var(--text-mute);letter-spacing:.04em;}
+.themes{margin-left:auto;display:flex;gap:6px;}
+.themes button{width:16px;height:16px;border-radius:50%;border:1.5px solid transparent;transition:transform .15s;}
+.themes button[aria-pressed="true"]{border-color:var(--gray300);transform:scale(1.15);}
+
+/* ---------- layout ---------- */
+.app{flex:1 1 auto;display:flex;min-height:0;}
+.stage{flex:1 1 auto;display:flex;flex-direction:column;min-width:0;min-height:0;}
+#curveWrap{flex:1 1 auto;position:relative;min-height:0;}
+#curve{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;}
+
+.paramzone{
+  flex:0 0 auto;border-top:1px solid var(--line);background:var(--surface);
+  position:relative;
+}
+.paramhead{
+  display:flex;align-items:center;gap:var(--sp3);
+  padding:6px var(--sp4) 2px;
+}
+.eyebrow{font-family:var(--font-mono);font-size:10px;letter-spacing:.16em;color:var(--text-dim);text-transform:uppercase;}
+.paramhead .jp{font-size:11px;color:var(--text-mute);}
+.paramhead .spacer{flex:1;}
+.mini{font-family:var(--font-mono);font-size:11px;color:var(--text-mute);padding:3px 8px;border:1px solid var(--line);border-radius:var(--r-s);}
+.mini:hover{border-color:var(--gray600);color:var(--text);}
+#param{display:block;width:100%;height:var(--track-h);touch-action:none;}
+.paramzone.collapsed #param{height:44px;}
+
+/* ---------- panel ---------- */
+.panel{
+  flex:0 0 var(--panel-w);width:var(--panel-w);border-left:1px solid var(--line);
+  background:var(--surface);overflow-y:auto;padding-bottom:var(--sp6);
+}
+.tabs{display:none;}
+.sec{border-bottom:1px solid var(--line-soft);padding:var(--sp4);}
+.sec h2{
+  font-family:var(--font-mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--text-dim);margin:0 0 var(--sp3);font-weight:600;
+  display:flex;gap:8px;align-items:baseline;
+}
+.sec h2 em{font-style:normal;font-family:var(--font-ui);font-size:11px;letter-spacing:.02em;color:var(--text-mute);}
+
+.row{display:flex;align-items:center;gap:var(--sp2);margin-bottom:var(--sp3);}
+.row:last-child{margin-bottom:0;}
+.row label{font-size:12px;color:var(--text-mute);flex:0 0 62px;}
+.val{font-family:var(--font-mono);font-size:12px;color:var(--text);margin-left:auto;font-variant-numeric:tabular-nums;}
+
+input[type=range]{
+  -webkit-appearance:none;appearance:none;flex:1;height:22px;background:none;
+}
+input[type=range]::-webkit-slider-runnable-track{height:2px;background:var(--gray700);border-radius:1px;}
+input[type=range]::-moz-range-track{height:2px;background:var(--gray700);border-radius:1px;}
+input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none;width:16px;height:16px;border-radius:50%;
+  background:var(--accent);margin-top:-7px;border:none;
+}
+input[type=range]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;background:var(--accent);border:none;}
+
+.seg{display:flex;border:1px solid var(--line);border-radius:var(--r-s);overflow:hidden;width:100%;}
+.seg button{flex:1;padding:7px 4px;font-size:12px;color:var(--text-mute);border-right:1px solid var(--line);}
+.seg button:last-child{border-right:none;}
+.seg button[aria-pressed="true"]{background:var(--accent);color:#1A1A19;font-weight:600;}
+
+.toggles{display:flex;flex-wrap:wrap;gap:6px;}
+.chip{
+  padding:6px 10px;border:1px solid var(--line);border-radius:999px;font-size:12px;color:var(--text-mute);
+}
+.chip[aria-pressed="true"]{border-color:var(--accent);color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,transparent);}
+
+.btns{display:flex;gap:6px;flex-wrap:wrap;}
+.btn{
+  flex:1 1 auto;padding:9px 10px;border:1px solid var(--line);border-radius:var(--r-s);
+  font-size:12px;text-align:center;color:var(--text);white-space:nowrap;
+}
+.btn:hover{border-color:var(--gray600);background:var(--surface-2);}
+.btn.primary{background:var(--accent);color:#1A1A19;border-color:var(--accent);font-weight:600;}
+.btn.primary:hover{background:var(--accent-dim);}
+
+.readout{
+  font-family:var(--font-mono);font-size:11px;color:var(--text-mute);
+  display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;font-variant-numeric:tabular-nums;
+}
+.readout b{color:var(--text);font-weight:500;}
+.hint{font-size:11px;color:var(--text-dim);line-height:1.6;margin:var(--sp3) 0 0;}
+.knotlist{display:flex;flex-direction:column;gap:6px;}
+.krow{display:flex;align-items:center;gap:var(--sp2);}
+.krow .u{font-family:var(--font-mono);font-size:12px;color:var(--text-mute);font-variant-numeric:tabular-nums;flex:0 0 62px;}
+.krow .c{font-family:var(--font-mono);font-size:11px;padding:2px 7px;border-radius:999px;border:1px solid var(--line);color:var(--text-mute);}
+.krow .c.c0{color:var(--gray200);border-color:var(--gray600);}
+.krow .c.cut{color:#FF8F8F;border-color:#81001F;}
+.krow .stp{margin-left:auto;display:flex;align-items:center;gap:2px;}
+.krow .stp button{width:28px;height:26px;border:1px solid var(--line);border-radius:var(--r-s);font-size:13px;color:var(--text-mute);}
+.krow .stp button:hover{border-color:var(--gray600);color:var(--text);}
+.krow .stp span{font-family:var(--font-mono);font-size:12px;width:26px;text-align:center;color:var(--text);}
+.note{font-size:11px;color:var(--text-dim);}
+.fieldlabel{font-size:12px;color:var(--text-mute);margin:0 0 var(--sp2);}
+.nudge{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;width:132px;margin-top:var(--sp2);}
+.nudge button{padding:8px 0;border:1px solid var(--line);border-radius:var(--r-s);font-size:13px;color:var(--text-mute);}
+.nudge .sp{visibility:hidden;}
+
+.toast{
+  position:fixed;left:50%;transform:translateX(-50%);bottom:24px;
+  background:var(--gray100);color:var(--gray1000);font-size:12px;font-weight:600;
+  padding:8px 16px;border-radius:999px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:50;
+}
+.toast.on{opacity:1;}
+
+/* ---------- mobile ---------- */
+@media (max-width:900px){
+  :root{--track-h:126px;}
+  header{padding:8px var(--sp3);}
+  .tagline{display:none;}
+  .app{flex-direction:column;}
+  .stage{flex:1 1 auto;}
+  .panel{
+    flex:0 0 auto;width:100%;border-left:none;border-top:1px solid var(--line);
+    max-height:38vh;padding-bottom:var(--sp3);
+  }
+  #curveWrap{min-height:26vh;}
+  .tabs{display:flex;position:sticky;top:0;background:var(--surface);z-index:5;border-bottom:1px solid var(--line);}
+  .tabs button{
+    flex:1;padding:11px 0;font-size:12px;color:var(--text-mute);border-bottom:2px solid transparent;
+  }
+  .tabs button[aria-pressed="true"]{color:var(--accent);border-bottom-color:var(--accent);}
+  .sec{display:none;border-bottom:none;}
+  .sec.active{display:block;}
+  .btn{padding:12px 10px;}
+  .chip{padding:8px 12px;}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;}}
+
+.threecol{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;}
+.twocol{display:grid;grid-template-columns:1fr 1fr;gap:6px;}
+.swatchrow{display:flex;gap:6px;flex-wrap:wrap;margin-top:var(--sp2);}
+.stagepad{position:relative;flex:1 1 auto;min-height:0;}
+.stagepad canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;}
+.transport{
+  display:flex;align-items:center;gap:var(--sp3);padding:8px var(--sp4);
+  border-top:1px solid var(--line);background:var(--surface);flex:0 0 auto;
+}
+.playbtn{width:38px;height:38px;border-radius:50%;background:var(--accent);color:#1A1A19;
+  display:flex;align-items:center;justify-content:center;font-size:14px;flex:0 0 auto;}
+#timeline{flex:1;height:34px;display:block;touch-action:none;}
+.tnum{font-family:var(--font-mono);font-size:11px;color:var(--text-mute);font-variant-numeric:tabular-nums;flex:0 0 auto;}
+@media (max-width:900px){ .stagepad{min-height:26vh;} }
+.warn{color:#FFC0BB;}
+.ok{color:#90E4C7;}
+</style>
+</head>
+<body data-theme="asagi">
+
+<header>
+  <span class="wordmark">KNOT SEQUENCER</span>
+  <span class="tagline">アンカー数と順序を保ったまま動かす</span>
+  <div class="themes" id="themes">
+    <button data-t="asagi"    style="background:#4ACBD4" title="浅葱"   aria-pressed="true"></button>
+    <button data-t="kurikawa" style="background:#F49972" title="栗皮"   aria-pressed="false"></button>
+    <button data-t="sumire"   style="background:#CC9FD9" title="菫"     aria-pressed="false"></button>
+    <button data-t="tsutsuji" style="background:#F691B6" title="躑躅"   aria-pressed="false"></button>
+    <button data-t="konjo"    style="background:#8FAEFE" title="紺"     aria-pressed="false"></button>
+  </div>
+</header>
+
+<div class="app">
+  <div class="stage">
+    <div class="stagepad"><canvas id="view"></canvas></div>
+    <div class="transport">
+      <button class="playbtn" id="play">▶</button>
+      <canvas id="timeline"></canvas>
+      <span class="tnum" id="tnum">000 / 060</span>
+    </div>
+
+  </div>
+  <div class="panel">
+    <div class="tabs" id="tabs"></div>
+    <section class="sec" data-s="motion" data-label="動き">
+      <h2>motion <em>制御点の動き</em></h2>
+      <div class="row">
+        <label for="amp">振幅</label>
+        <input type="range" id="amp" min="0" max="180" step="1" value="70">
+        <span class="val" id="ampVal">70</span>
+      </div>
+      <div class="row">
+        <label for="phase">位相差</label>
+        <input type="range" id="phase" min="0" max="1" step="0.005" value="0.14" data-fmt="f2">
+        <span class="val" id="phaseVal">0.14</span>
+      </div>
+      <div class="row">
+        <label for="ratio">縦横比</label>
+        <input type="range" id="ratio" min="-1" max="1" step="0.02" value="0.4" data-fmt="f2">
+        <span class="val" id="ratioVal">0.40</span>
+      </div>
+      <div class="row">
+        <label for="freq">周回数</label>
+        <input type="range" id="freq" min="1" max="4" step="1" value="1">
+        <span class="val" id="freqVal">1</span>
+      </div>
+      <div class="twocol" style="margin-top:var(--sp3)">
+        <button class="btn" id="addPt">＋ 制御点</button>
+        <button class="btn" id="delPt">− 制御点</button>
+        <button class="btn" id="resetBtn">整える</button>
+        <button class="btn primary" id="shuffle">偶然</button>
+      </div>
+    </section>
+
+    <section class="sec" data-s="knot" data-label="ノット">
+      <h2>knots <em>ノット列を揺らす</em></h2>
+      <div class="row">
+        <label for="kamp">揺れ幅</label>
+        <input type="range" id="kamp" min="0" max="0.5" step="0.005" value="0.12" data-fmt="f2">
+        <span class="val" id="kampVal">0.12</span>
+      </div>
+      <div class="row">
+        <label for="kphase">位相差</label>
+        <input type="range" id="kphase" min="0" max="1" step="0.01" value="0.25" data-fmt="f2">
+        <span class="val" id="kphaseVal">0.25</span>
+      </div>
+      <div class="row">
+        <label for="deg">次数 p</label>
+        <input type="range" id="deg" min="1" max="5" step="1" value="3">
+        <span class="val" id="degVal">3</span>
+      </div>
+      <div class="readout" id="kread" style="margin-top:var(--sp3)"></div>
+      <p class="hint">ノットどうしは最小間隔を保って動きます。重ならないので、スパンの数＝アンカーの数がフレーム間で変わりません。</p>
+    </section>
+
+    <section class="sec" data-s="view" data-label="表示">
+      <h2>view <em>表示</em></h2>
+      <div class="toggles" id="toggles">
+        <button class="chip" data-v="poly"    aria-pressed="true">制御多角形</button>
+        <button class="chip" data-v="points"  aria-pressed="true">制御点</button>
+        <button class="chip" data-v="anchors" aria-pressed="true">アンカー</button>
+        <button class="chip" data-v="onion"   aria-pressed="true">残像</button>
+        <button class="chip" data-v="paths"   aria-pressed="false">軌跡</button>
+        <button class="chip" data-v="grid"    aria-pressed="true">グリッド</button>
+      </div>
+      <div class="row" style="margin-top:var(--sp4)">
+        <label for="frames">フレーム</label>
+        <input type="range" id="frames" min="8" max="120" step="1" value="60">
+        <span class="val" id="framesVal">60</span>
+      </div>
+      <div class="row">
+        <label for="speed">速さ</label>
+        <input type="range" id="speed" min="0.1" max="3" step="0.05" value="1" data-fmt="f2">
+        <span class="val" id="speedVal">1.00</span>
+      </div>
+    </section>
+
+    <section class="sec" data-s="out" data-label="出力">
+      <h2>output <em>書き出し</em></h2>
+      <div class="readout" id="readout"></div>
+      <div class="twocol" style="margin-top:var(--sp4)">
+        <button class="btn primary" id="svgBtn">SVG 全フレーム</button>
+        <button class="btn" id="jsonBtn">JSON</button>
+        <button class="btn" id="svg1Btn">SVG 現フレーム</button>
+        <button class="btn" id="pngBtn">PNG</button>
+      </div>
+      <p class="hint">SVGは1フレーム＝1グループで書き出します。Illustratorで「レイヤーに分配」すればそのままAfter Effectsへ。JSONはフレームごとのアンカー座標列です。</p>
+    </section>
+
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+"use strict";
+/* =========================================================
+   B-spline core  (numerically verified: partition of unity,
+   de Boor == Σ N_i P_i, analytic derivative, Bézier fidelity)
+   ========================================================= */
+function buildCurve(P, degree, mode, interior){
+  let pts, U, p;
+  if(mode === 'closed'){
+    const n = P.length;
+    p = Math.max(1, Math.min(degree, n - 1));
+    pts = P.concat(P.slice(0, p));
+    const m = pts.length + p + 1;
+    U = []; for(let i=0;i<m;i++) U.push(i/(m-1));
+  } else if(mode === 'uniform'){
+    pts = P.slice();
+    p = Math.max(1, Math.min(degree, pts.length - 1));
+    const m = pts.length + p + 1;
+    U = []; for(let i=0;i<m;i++) U.push(i/(m-1));
+  } else {
+    pts = P.slice();
+    const N = pts.length;
+    p = Math.max(1, Math.min(degree, N - 1));
+    const nInt = N - p - 1;
+    let inner;
+    if(interior && interior.length === nInt) inner = interior.slice().sort((a,b)=>a-b);
+    else { inner = []; for(let i=1;i<=nInt;i++) inner.push(i/(nInt+1)); }
+    U = [];
+    for(let i=0;i<=p;i++) U.push(0);
+    for(const v of inner) U.push(v);
+    for(let i=0;i<=p;i++) U.push(1);
+  }
+  const N = pts.length;
+  return {pts, U, p, N, u0:U[p], u1:U[N]};
+}
+function findSpan(c,u){
+  const {U,N,p}=c;
+  if(u >= U[N]){ let k=N-1; while(k>p && U[k]===U[k+1]) k--; return k; }
+  if(u <= U[p]){ let k=p; while(k<N-1 && U[k]===U[k+1]) k++; return k; }
+  let lo=p, hi=N, mid=(lo+hi)>>1, guard=0;
+  while((u<U[mid] || u>=U[mid+1]) && guard++<200){
+    if(u<U[mid]) hi=mid; else lo=mid;
+    const nx=(lo+hi)>>1;
+    if(nx===mid){ mid=lo; break; }
+    mid=nx;
+  }
+  return mid;
+}
+function basisFuns(c,span,u){
+  const {U,p}=c;
+  const Nv=new Array(p+1).fill(0), left=new Array(p+1).fill(0), right=new Array(p+1).fill(0);
+  Nv[0]=1;
+  for(let j=1;j<=p;j++){
+    left[j]=u-U[span+1-j]; right[j]=U[span+j]-u;
+    let saved=0;
+    for(let r=0;r<j;r++){
+      const den=right[r+1]+left[j-r];
+      const tmp = den===0 ? 0 : Nv[r]/den;
+      Nv[r]=saved+right[r+1]*tmp;
+      saved=left[j-r]*tmp;
+    }
+    Nv[j]=saved;
+  }
+  return Nv;
+}
+function basisVector(c,u){
+  const out=new Array(c.N).fill(0);
+  const span=findSpan(c,u), Nv=basisFuns(c,span,u);
+  for(let j=0;j<=c.p;j++){ const i=span-c.p+j; if(i>=0&&i<c.N) out[i]=Nv[j]; }
+  return out;
+}
+function evalCurve(c,u,forced){
+  const span = forced===undefined ? findSpan(c,u) : forced;
+  const Nv=basisFuns(c,span,u);
+  let x=0,y=0;
+  for(let j=0;j<=c.p;j++){ const P=c.pts[span-c.p+j]; x+=Nv[j]*P.x; y+=Nv[j]*P.y; }
+  return {x,y};
+}
+function derivCurve(c){
+  if(c.p<1) return null;
+  const {U,p,pts}=c, Q=[];
+  for(let i=0;i<pts.length-1;i++){
+    const den=U[i+p+1]-U[i+1], f = den===0?0:p/den;
+    Q.push({x:(pts[i+1].x-pts[i].x)*f, y:(pts[i+1].y-pts[i].y)*f});
+  }
+  const U2=U.slice(1,U.length-1), N2=Q.length;
+  return {pts:Q,U:U2,p:p-1,N:N2,u0:U2[p-1],u1:U2[N2]};
+}
+function curvatureAt(d1,d2,u){
+  if(!d1) return 0;
+  const a=evalCurve(d1,u), b=d2?evalCurve(d2,u):{x:0,y:0};
+  const sp=Math.hypot(a.x,a.y);
+  if(sp<1e-12) return 0;
+  return (a.x*b.y-a.y*b.x)/(sp*sp*sp);
+}
+function deBoorLevels(c,u){
+  const span=findSpan(c,u), p=c.p, U=c.U;
+  const d=[];
+  for(let j=0;j<=p;j++){ const P=c.pts[span-p+j]; d.push({x:P.x,y:P.y}); }
+  const levels=[d.slice()];
+  for(let r=1;r<=p;r++){
+    for(let j=p;j>=r;j--){
+      const den=U[j+1+span-r]-U[j+span-p];
+      const a = den===0 ? 0 : (u-U[j+span-p])/den;
+      d[j]={x:(1-a)*d[j-1].x+a*d[j].x, y:(1-a)*d[j-1].y+a*d[j].y};
+    }
+    levels.push(d.slice(r));
+  }
+  return levels;
+}
+function spanBreaks(c){
+  const b=[];
+  for(let i=c.p;i<=c.N;i++){
+    const v=c.U[i];
+    if(b.length===0 || v>b[b.length-1]+1e-9) b.push(v);
+  }
+  return b;
+}
+function toBeziers(c,d1){
+  const sub = c.p<=3 ? 1 : 8;
+  const brk = spanBreaks(c), segs=[];
+  for(let s=0;s<brk.length-1;s++){
+    const a0=brk[s], b0=brk[s+1];
+    for(let k=0;k<sub;k++){
+      const a=a0+(b0-a0)*(k/sub), b=a0+(b0-a0)*((k+1)/sub), h=b-a, mid=(a+b)/2;
+      const sc=findSpan(c,mid), sd=findSpan(d1,mid);
+      const P0=evalCurve(c,a,sc), P1=evalCurve(c,b,sc);
+      const T0=evalCurve(d1,a,sd), T1=evalCurve(d1,b,sd);
+      segs.push({p0:P0, c1:{x:P0.x+T0.x*h/3, y:P0.y+T0.y*h/3},
+                        c2:{x:P1.x-T1.x*h/3, y:P1.y-T1.y*h/3}, p1:P1});
+    }
+  }
+  return segs;
+}
+
+
+/* ---------- shared helpers (every tool in the family) ---------- */
+function css(v){ return getComputedStyle(document.body).getPropertyValue(v).trim(); }
+const DV = ['#4ACBD4','#F49972','#CC9FD9','#F691B6','#8FAEFE','#46D2A2','#DEC400','#FF8F8F','#DEB074'];
+const COARSE = matchMedia('(pointer:coarse)').matches;
+
+function toast(msg){
+  const el=document.getElementById('toast');
+  el.textContent=msg; el.classList.add('on');
+  clearTimeout(el._t); el._t=setTimeout(()=>el.classList.remove('on'),1500);
+}
+function stamp(){
+  const d=new Date(), z=n=>String(n).padStart(2,'0');
+  return `${d.getFullYear()}${z(d.getMonth()+1)}${z(d.getDate())}-${z(d.getHours())}${z(d.getMinutes())}`;
+}
+function download(blob,name){
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob); a.download=name;
+  document.body.appendChild(a); a.click();
+  setTimeout(()=>{URL.revokeObjectURL(a.href); a.remove();},100);
+}
+function saveSVG(inner,name,w,h){
+  const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">\n${inner}\n</svg>`;
+  download(new Blob([svg],{type:'image/svg+xml'}), name);
+  toast('SVGを書き出しました');
+}
+function bezPath(segs, close){
+  if(!segs.length) return '';
+  let d=`M ${segs[0].p0.x.toFixed(2)} ${segs[0].p0.y.toFixed(2)}`;
+  segs.forEach(s=>{ d+=` C ${s.c1.x.toFixed(2)} ${s.c1.y.toFixed(2)} ${s.c2.x.toFixed(2)} ${s.c2.y.toFixed(2)} ${s.p1.x.toFixed(2)} ${s.p1.y.toFixed(2)}`; });
+  return d + (close?' Z':'');
+}
+function strokeBez(ctx, segs, toS){
+  if(!segs.length) return;
+  let prev=null;
+  ctx.beginPath();
+  segs.forEach((sg,i)=>{
+    const a=toS(sg.p0), b=toS(sg.c1), c=toS(sg.c2), d=toS(sg.p1);
+    if(i===0 || !prev || Math.hypot(a.x-prev.x,a.y-prev.y)>0.5) ctx.moveTo(a.x,a.y);
+    ctx.bezierCurveTo(b.x,b.y,c.x,c.y,d.x,d.y);
+    prev=d;
+  });
+  ctx.stroke();
+}
+/* auto-build the mobile tab bar from the panel sections */
+function initChrome(onTheme){
+  const tabs=document.getElementById('tabs');
+  document.querySelectorAll('.panel .sec').forEach((s,i)=>{
+    const b=document.createElement('button');
+    b.dataset.s=s.dataset.s; b.textContent=s.dataset.label;
+    b.setAttribute('aria-pressed', String(i===0));
+    tabs.appendChild(b);
+    if(i===0) s.classList.add('active');
+  });
+  tabs.addEventListener('click', e=>{
+    const b=e.target.closest('button'); if(!b) return;
+    tabs.querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));
+    document.querySelectorAll('.panel .sec').forEach(s=>s.classList.toggle('active', s.dataset.s===b.dataset.s));
+  });
+  const th=document.getElementById('themes');
+  th.addEventListener('click', e=>{
+    const b=e.target.closest('button'); if(!b) return;
+    document.body.dataset.theme=b.dataset.t;
+    th.querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));
+    if(onTheme) onTheme();
+  });
+}
+/* dpr-aware canvas sizing */
+function sizeCanvas(cv,ctx){
+  const dpr=Math.min(window.devicePixelRatio||1,2.5);
+  const r=cv.getBoundingClientRect();
+  const w=Math.max(1,Math.round(r.width)), h=Math.max(1,Math.round(r.height));
+  cv.width=w*dpr; cv.height=h*dpr;
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  return {w,h};
+}
+function seg(el, onPick){
+  el.addEventListener('click', e=>{
+    const b=e.target.closest('button'); if(!b) return;
+    el.querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));
+    onPick(b.dataset.v);
+  });
+}
+function chips(el, state, onChange){
+  el.addEventListener('click', e=>{
+    const b=e.target.closest('.chip'); if(!b) return;
+    state[b.dataset.v]=!state[b.dataset.v];
+    b.setAttribute('aria-pressed', String(state[b.dataset.v]));
+    onChange();
+  });
+}
+function bindRange(id, onInput){
+  const el=document.getElementById(id), out=document.getElementById(id+'Val');
+  const fire=()=>{ if(out) out.textContent=el.dataset.fmt==='f2'? (+el.value).toFixed(2) : el.value; onInput(+el.value); };
+  el.addEventListener('input', fire);
+  if(out) out.textContent = el.dataset.fmt==='f2' ? (+el.value).toFixed(2) : el.value;
+  return el;
+}
+
+/* =========================================================
+   KNOT SEQUENCER — drive control points and the knot vector
+   with time, while keeping the anchor count and order fixed
+   so the frames drop straight into Illustrator / After Effects
+   ========================================================= */
+const W=1000, H=700, GAP=0.02;          // minimum knot separation
+const S = {
+  P:[], deg:3,
+  amp:70, phase:0.14, ratio:0.4, freq:1,
+  kamp:0.12, kphase:0.25,
+  frames:60, speed:1, f:0, playing:true,
+  show:{poly:true, points:true, anchors:true, onion:true, paths:false, grid:true},
+  sel:null
+};
+function basePoints(){
+  const P=[], n=8;
+  for(let i=0;i<n;i++) P.push({x:110+i*(W-220)/(n-1), y:H/2+Math.sin(i*0.85)*150});
+  return P;
+}
+
+/* ---------- time -> geometry ---------- */
+function pointsAt(t){
+  return S.P.map((p,i)=>{
+    const a=2*Math.PI*(S.freq*t + i*S.phase);
+    return {x:p.x + Math.cos(a)*S.amp, y:p.y + Math.sin(a)*S.amp*S.ratio};
+  });
+}
+function baseInterior(n,p){
+  const k=n-p-1, out=[];
+  for(let i=1;i<=k;i++) out.push(i/(k+1));
+  return out;
+}
+function knotsAt(t,n,p){
+  const base=baseInterior(n,p);
+  if(!base.length) return base;
+  let v=base.map((b,j)=> b + Math.sin(2*Math.PI*(t + j*S.kphase))*S.kamp);
+  v.sort((a,b)=>a-b);
+  const m=v.length;
+  // project onto the feasible set: GAP from each border and from each other
+  for(let i=0;i<m;i++) v[i]=Math.max(GAP*(i+1), Math.min(1-GAP*(m-i), v[i]));
+  for(let i=1;i<m;i++) v[i]=Math.max(v[i], v[i-1]+GAP);
+  for(let i=m-2;i>=0;i--) v[i]=Math.min(v[i], v[i+1]-GAP);
+  for(let i=0;i<m;i++) v[i]=Math.max(GAP, Math.min(1-GAP, v[i]));
+  return v;
+}
+function frameCurve(f){
+  const t=f/S.frames;
+  const pts=pointsAt(t);
+  const p=Math.max(1,Math.min(S.deg, pts.length-1));
+  const c=buildCurve(pts, S.deg, 'clamped', knotsAt(t, pts.length, p));
+  return {c, pts, segs:toBeziers(c, derivCurve(c))};
+}
+let CUR=null;
+function rebuild(){ CUR=frameCurve(S.f); }
+
+/* anchor-count invariance across the whole loop */
+function anchorAudit(){
+  let mn=1e9, mx=-1;
+  for(let f=0;f<S.frames;f++){
+    const n=frameCurve(f).segs.length;
+    mn=Math.min(mn,n); mx=Math.max(mx,n);
+  }
+  return {mn:mn+1, mx:mx+1, ok:mn===mx};
+}
+
+/* =========================================================
+   render
+   ========================================================= */
+const cv=document.getElementById('view'), ctx=cv.getContext('2d');
+const tl=document.getElementById('timeline'), tctx=tl.getContext('2d');
+let VW=0,VH=0,SC=1,OX=0,OY=0,TW=0,TH=0;
+const toS=p=>({x:p.x*SC+OX, y:p.y*SC+OY});
+const toW=(x,y)=>({x:(x-OX)/SC, y:(y-OY)/SC});
+function resize(){
+  const d=sizeCanvas(cv,ctx); VW=d.w; VH=d.h;
+  SC=Math.min((VW-36)/W,(VH-36)/H);
+  OX=(VW-W*SC)/2; OY=(VH-H*SC)/2;
+  const e=sizeCanvas(tl,tctx); TW=e.w; TH=e.h;
+  render();
+}
+function render(){
+  const A=css('--accent');
+  ctx.clearRect(0,0,VW,VH);
+  const o=toS({x:0,y:0}), e=toS({x:W,y:H});
+  if(S.show.grid){
+    ctx.save(); ctx.strokeStyle='rgba(255,255,255,0.04)'; ctx.lineWidth=1;
+    ctx.beginPath();
+    for(let x=0;x<=W;x+=50){ const sx=Math.round(o.x+x*SC)+0.5; ctx.moveTo(sx,o.y); ctx.lineTo(sx,e.y); }
+    for(let y=0;y<=H;y+=50){ const sy=Math.round(o.y+y*SC)+0.5; ctx.moveTo(o.x,sy); ctx.lineTo(e.x,sy); }
+    ctx.stroke(); ctx.restore();
+  }
+  ctx.strokeStyle='rgba(255,255,255,0.12)'; ctx.lineWidth=1;
+  ctx.strokeRect(Math.round(o.x)+0.5,Math.round(o.y)+0.5,Math.round(e.x-o.x),Math.round(e.y-o.y));
+
+  // onion skin
+  if(S.show.onion){
+    ctx.save();
+    ctx.strokeStyle=A; ctx.lineWidth=1;
+    const N=8;
+    for(let k=1;k<=N;k++){
+      const f=(S.f - k*Math.max(1,Math.round(S.frames/28)) + S.frames*4) % S.frames;
+      ctx.globalAlpha=0.16*(1-k/N);
+      strokeBez(ctx, frameCurve(f).segs, toS);
+    }
+    ctx.restore();
+  }
+  // control-point orbits
+  if(S.show.paths){
+    ctx.save();
+    ctx.strokeStyle='rgba(255,255,255,0.16)'; ctx.lineWidth=1;
+    S.P.forEach((p,i)=>{
+      ctx.beginPath();
+      for(let k=0;k<=48;k++){
+        const a=2*Math.PI*(S.freq*(k/48) + i*S.phase);
+        const q=toS({x:p.x+Math.cos(a)*S.amp, y:p.y+Math.sin(a)*S.amp*S.ratio});
+        k?ctx.lineTo(q.x,q.y):ctx.moveTo(q.x,q.y);
+      }
+      ctx.closePath(); ctx.stroke();
+    });
+    ctx.restore();
+  }
+  // control polygon of the current frame
+  if(S.show.poly){
+    ctx.save();
+    ctx.strokeStyle='rgba(255,255,255,0.22)'; ctx.lineWidth=1; ctx.setLineDash([4,4]);
+    ctx.beginPath();
+    CUR.pts.forEach((p,i)=>{ const q=toS(p); i?ctx.lineTo(q.x,q.y):ctx.moveTo(q.x,q.y); });
+    ctx.stroke(); ctx.restore();
+  }
+  // the curve
+  ctx.save();
+  ctx.strokeStyle=A; ctx.lineWidth=2.4; ctx.lineJoin='round'; ctx.lineCap='round';
+  strokeBez(ctx, CUR.segs, toS);
+  ctx.restore();
+
+  // exported anchors
+  if(S.show.anchors){
+    ctx.save();
+    ctx.fillStyle=css('--gray100');
+    CUR.segs.forEach((sg,i)=>{
+      const a=toS(sg.p0); ctx.fillRect(a.x-2.5,a.y-2.5,5,5);
+      if(i===CUR.segs.length-1){ const d=toS(sg.p1); ctx.fillRect(d.x-2.5,d.y-2.5,5,5); }
+    });
+    ctx.restore();
+  }
+  // base control points (draggable) and their current positions
+  if(S.show.points){
+    const R=COARSE?9:7;
+    S.P.forEach((p,i)=>{
+      const b=toS(p), c=toS(CUR.pts[i]);
+      ctx.save();
+      ctx.strokeStyle='rgba(255,255,255,0.20)'; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.moveTo(b.x,b.y); ctx.lineTo(c.x,c.y); ctx.stroke();
+      ctx.fillStyle=DV[i%DV.length]; ctx.globalAlpha=0.9;
+      ctx.beginPath(); ctx.arc(c.x,c.y,4,0,6.2832); ctx.fill();
+      ctx.globalAlpha=1;
+      ctx.fillStyle = i===S.sel?DV[i%DV.length]:css('--bg');
+      ctx.strokeStyle=DV[i%DV.length]; ctx.lineWidth=i===S.sel?2.4:1.5;
+      ctx.beginPath(); ctx.arc(b.x,b.y,R,0,6.2832); ctx.fill(); ctx.stroke();
+      ctx.restore();
+    });
+  }
+  drawTimeline();
+  updateReadout();
+}
+function drawTimeline(){
+  tctx.clearRect(0,0,TW,TH);
+  const pad=6, w=TW-pad*2;
+  // knot trajectories: x = time, y = u
+  const p=Math.max(1,Math.min(S.deg,S.P.length-1));
+  const m=Math.max(0, S.P.length-p-1);
+  tctx.save();
+  tctx.strokeStyle='rgba(255,255,255,0.10)'; tctx.lineWidth=1;
+  tctx.strokeRect(pad+0.5, 0.5, w-1, TH-1);
+  for(let j=0;j<m;j++){
+    tctx.strokeStyle=DV[j%DV.length]; tctx.globalAlpha=0.85; tctx.lineWidth=1.2;
+    tctx.beginPath();
+    for(let f=0;f<=S.frames;f++){
+      const v=knotsAt((f%S.frames)/S.frames, S.P.length, p)[j];
+      const x=pad+w*f/S.frames, y=2+(TH-4)*v;
+      f?tctx.lineTo(x,y):tctx.moveTo(x,y);
+    }
+    tctx.stroke();
+  }
+  tctx.globalAlpha=1;
+  const px=pad+w*S.f/S.frames;
+  tctx.strokeStyle=css('--gray100'); tctx.lineWidth=1.5;
+  tctx.beginPath(); tctx.moveTo(px,0); tctx.lineTo(px,TH); tctx.stroke();
+  tctx.restore();
+  document.getElementById('tnum').textContent =
+    String(S.f).padStart(3,'0')+' / '+String(S.frames).padStart(3,'0');
+}
+function updateReadout(){
+  const a=anchorAudit();
+  document.getElementById('readout').innerHTML=
+    `<span>フレーム</span><b>${S.frames}</b>`+
+    `<span>アンカー</span><b>${a.mn===a.mx?a.mn:a.mn+'〜'+a.mx}</b>`+
+    `<span>不変性</span><b class="${a.ok?'ok':'warn'}">${a.ok?'保たれている':'変動あり'}</b>`+
+    `<span>次数</span><b>${CUR.c.p}</b>`;
+  const kn=knotsAt(S.f/S.frames, S.P.length, CUR.c.p);
+  let mind=1;
+  for(let i=1;i<kn.length;i++) mind=Math.min(mind, kn[i]-kn[i-1]);
+  document.getElementById('kread').innerHTML=
+    `<span>内部ノット</span><b>${kn.length}</b>`+
+    `<span>最小間隔</span><b>${kn.length>1?mind.toFixed(3):'—'}</b>`+
+    `<span>スパン</span><b>${CUR.segs.length}</b>`;
+}
+
+/* =========================================================
+   playback
+   ========================================================= */
+let last=performance.now(), acc=0;
+function tick(now){
+  const dt=Math.min(0.1,(now-last)/1000); last=now;
+  if(S.playing){
+    acc += dt*S.speed*S.frames/2.5;
+    while(acc>=1){ S.f=(S.f+1)%S.frames; acc-=1; }
+    rebuild(); render();
+  }
+  requestAnimationFrame(tick);
+}
+
+/* =========================================================
+   interaction
+   ========================================================= */
+let drag=null, lastTap=0;
+cv.addEventListener('pointerdown', e=>{
+  cv.setPointerCapture(e.pointerId);
+  const w=toW(e.offsetX,e.offsetY);
+  let hit=-1, bd=(COARSE?24:15)/SC;
+  S.P.forEach((p,i)=>{ const d=Math.hypot(p.x-w.x,p.y-w.y); if(d<bd){ bd=d; hit=i; } });
+  const now=performance.now();
+  if(hit>=0){
+    if(S.sel===hit && now-lastTap<340){ delPoint(hit); lastTap=0; return; }
+    lastTap=now; S.sel=hit; drag={i:hit};
+  } else { S.sel=null; drag=null; }
+  rebuild(); render();
+});
+cv.addEventListener('pointermove', e=>{
+  if(!drag) return;
+  const w=toW(e.offsetX,e.offsetY);
+  S.P[drag.i]={x:w.x,y:w.y};
+  rebuild(); render();
+});
+function up(){ drag=null; }
+cv.addEventListener('pointerup', up);
+cv.addEventListener('pointercancel', up);
+
+let tdrag=false;
+function scrub(x){
+  const pad=6, w=TW-pad*2;
+  S.f=Math.max(0,Math.min(S.frames-1, Math.round((x-pad)/w*S.frames)));
+  rebuild(); render();
+}
+tl.addEventListener('pointerdown', e=>{ tl.setPointerCapture(e.pointerId); tdrag=true; S.playing=false; setPlay(); scrub(e.offsetX); });
+tl.addEventListener('pointermove', e=>{ if(tdrag) scrub(e.offsetX); });
+tl.addEventListener('pointerup', ()=>{ tdrag=false; });
+tl.addEventListener('pointercancel', ()=>{ tdrag=false; });
+
+function setPlay(){ document.getElementById('play').textContent = S.playing?'❚❚':'▶'; }
+document.getElementById('play').addEventListener('click', ()=>{ S.playing=!S.playing; setPlay(); });
+
+function delPoint(i){
+  if(S.P.length<=2){ toast('これ以上減らせません'); return; }
+  S.P.splice(i,1); S.sel=null; rebuild(); render();
+}
+
+/* =========================================================
+   controls
+   ========================================================= */
+const R=(id,fn)=>bindRange(id, v=>{ fn(v); rebuild(); render(); });
+R('amp',   v=>S.amp=v);
+R('phase', v=>S.phase=v);
+R('ratio', v=>S.ratio=v);
+R('freq',  v=>S.freq=v);
+R('kamp',  v=>S.kamp=v);
+R('kphase',v=>S.kphase=v);
+R('deg',   v=>S.deg=v);
+R('frames',v=>{ S.frames=v; S.f=Math.min(S.f,v-1); });
+R('speed', v=>S.speed=v);
+chips(document.getElementById('toggles'), S.show, render);
+document.getElementById('addPt').addEventListener('click', ()=>{
+  const i=S.sel===null?S.P.length-1:S.sel;
+  const a=S.P[i], b=S.P[Math.min(S.P.length-1,i+1)];
+  S.P.splice(i+1,0,{x:(a.x+b.x)/2+16, y:(a.y+b.y)/2+16});
+  rebuild(); render();
+});
+document.getElementById('delPt').addEventListener('click', ()=>delPoint(S.sel===null?S.P.length-1:S.sel));
+document.getElementById('resetBtn').addEventListener('click', ()=>{ S.P=basePoints(); S.sel=null; rebuild(); render(); });
+document.getElementById('shuffle').addEventListener('click', ()=>{
+  S.P=S.P.map(()=>({x:90+Math.random()*(W-180), y:90+Math.random()*(H-180)}));
+  rebuild(); render();
+});
+
+/* ---------- export ---------- */
+document.getElementById('svgBtn').addEventListener('click', ()=>{
+  const a=anchorAudit();
+  const gs=[];
+  for(let f=0;f<S.frames;f++){
+    const fr=frameCurve(f);
+    gs.push(`<g id="frame_${String(f).padStart(3,'0')}"><path d="${bezPath(fr.segs)}" fill="none" stroke="#000" stroke-width="1"/></g>`);
+  }
+  saveSVG(gs.join('\n'), `knotseq_${S.frames}f_${stamp()}.svg`, W, H);
+  toast(a.ok?`${S.frames}フレーム／アンカー${a.mn}で一定`:`書き出しました（アンカー ${a.mn}〜${a.mx}）`);
+});
+document.getElementById('svg1Btn').addEventListener('click', ()=>{
+  saveSVG(`<path d="${bezPath(CUR.segs)}" fill="none" stroke="#000" stroke-width="1"/>`,
+          `knotseq_f${String(S.f).padStart(3,'0')}_${stamp()}.svg`, W, H);
+});
+document.getElementById('jsonBtn').addEventListener('click', ()=>{
+  const frames=[];
+  for(let f=0;f<S.frames;f++){
+    const segs=frameCurve(f).segs;
+    const anchors=segs.map(s=>[+s.p0.x.toFixed(3), +s.p0.y.toFixed(3)]);
+    anchors.push([+segs[segs.length-1].p1.x.toFixed(3), +segs[segs.length-1].p1.y.toFixed(3)]);
+    const inTan=[], outTan=[];
+    segs.forEach((s,i)=>{
+      outTan.push([+(s.c1.x-s.p0.x).toFixed(3), +(s.c1.y-s.p0.y).toFixed(3)]);
+      inTan.push([+(s.c2.x-s.p1.x).toFixed(3), +(s.c2.y-s.p1.y).toFixed(3)]);
+    });
+    frames.push({frame:f, anchors, outTangents:outTan, inTangents:inTan});
+  }
+  const a=anchorAudit();
+  const doc={tool:'knot-sequencer', box:[W,H], frames:S.frames, degree:CUR.c.p,
+             anchorCount:a.mn, anchorCountConstant:a.ok, data:frames};
+  download(new Blob([JSON.stringify(doc)],{type:'application/json'}), `knotseq_${S.frames}f_${stamp()}.json`);
+  toast('JSONを書き出しました');
+});
+document.getElementById('pngBtn').addEventListener('click', ()=>{
+  cv.toBlob(b=>{ download(b, `knotseq_f${S.f}_${stamp()}.png`); toast('PNGを書き出しました'); });
+});
+
+/* =========================================================
+   boot
+   ========================================================= */
+initChrome(render);
+S.P=basePoints();
+rebuild(); setPlay();
+window.addEventListener('resize', ()=>requestAnimationFrame(resize));
+if(window.ResizeObserver) new ResizeObserver(()=>requestAnimationFrame(resize)).observe(document.querySelector('.stage'));
+resize();
+requestAnimationFrame(tick);
+
+</script>
+</body>
+</html>
